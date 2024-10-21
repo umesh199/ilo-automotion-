@@ -1,0 +1,91 @@
+import paramiko
+import time
+
+# iLO credentials
+ilo_host = 'ilo_ip_address'
+ilo_user = 'ilo_username'
+ilo_pass = 'ilo_password'
+
+# Commands to change boot order, mount ISO, and revert settings
+change_to_pxe_cmd = 'set /system1/bootconfig1/bootorder1 PXE'
+revert_boot_order_cmd = 'set /system1/bootconfig1/bootorder1 HDD'
+mount_iso_cmd = 'vm cd insert iso-image-url'
+unmount_iso_cmd = 'vm cd eject'
+
+# Function to execute command over SSH using Paramiko
+def execute_ssh_command(host, user, password, command):
+    ssh = paramiko.SSHClient()
+    ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+    try:
+        ssh.connect(host, username=user, password=password)
+        stdin, stdout, stderr = ssh.exec_command(command)
+        output = stdout.read().decode()
+        error = stderr.read().decode()
+        print(f"Command executed: {command}")
+        print(f"Output: {output}")
+        if error:
+            print(f"Error: {error}")
+        ssh.close()
+    except Exception as e:
+        print(f"Failed to execute command {command}. Error: {str(e)}")
+
+# Change boot order to PXE
+def change_boot_order_to_pxe():
+    print("Changing boot order to PXE...")
+    execute_ssh_command(ilo_host, ilo_user, ilo_pass, change_to_pxe_cmd)
+
+# Mount ISO for network installation
+def mount_iso():
+    print("Mounting ISO...")
+    execute_ssh_command(ilo_host, ilo_user, ilo_pass, mount_iso_cmd)
+
+# Revert boot order back to HDD
+def revert_boot_order():
+    print("Reverting boot order to HDD...")
+    execute_ssh_command(ilo_host, ilo_user, ilo_pass, revert_boot_order_cmd)
+
+# Unmount the ISO image
+def unmount_iso():
+    print("Unmounting ISO...")
+    execute_ssh_command(ilo_host, ilo_user, ilo_pass, unmount_iso_cmd)
+
+# Post-install script to add SSH keys and Python scripts
+def post_install_script():
+    print("Executing post-install script...")
+    ssh_key = 'ssh-rsa AAAAB3NzaC1yc2EAAAABIwAAAQEA...'
+    commands = [
+        f'echo "{ssh_key}" >> /root/.ssh/authorized_keys',
+        'curl -O http://server/path/to/python-script.py',
+        'chmod +x python-script.py'
+    ]
+    for cmd in commands:
+        execute_ssh_command(ilo_host, ilo_user, ilo_pass, cmd)
+
+# Main deployment function
+def deploy_rhel8():
+    # Step 1: Change boot order to PXE
+    change_boot_order_to_pxe()
+
+    # Step 2: Mount the ISO image
+    mount_iso()
+
+    # Step 3: Initiate PXE boot (restart server)
+    print("Restarting server for PXE boot...")
+    execute_ssh_command(ilo_host, ilo_user, ilo_pass, 'reset /system1')
+
+    # Wait for a few minutes to allow the system to boot and start the installation
+    time.sleep(300)  # 5 minutes
+
+    # Step 4: Revert boot order after installation begins
+    revert_boot_order()
+
+    # Step 5: Unmount the ISO image
+    unmount_iso()
+
+    # Step 6: Execute post-installation scripts
+    post_install_script()
+
+    print("Deployment completed successfully.")
+
+if __name__ == "__main__":
+    deploy_rhel8()
