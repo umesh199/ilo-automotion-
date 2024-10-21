@@ -1,0 +1,51 @@
+import paramiko
+
+def reboot_ilo_systems(file_path, ilo_username, ilo_password):
+    # Read the list of iLO IPs from the file
+    with open(file_path, 'r') as file:
+        ilo_ips = file.readlines()
+    
+    # Remove any extra whitespace or newline characters
+    ilo_ips = [ip.strip() for ip in ilo_ips]
+
+    # Initialize Paramiko SSH client
+    ssh_client = paramiko.SSHClient()
+    ssh_client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+
+    # Iterate over the list of iLO IPs and reboot each system
+    for ilo_ip in ilo_ips:
+        try:
+            print(f"Connecting to iLO {ilo_ip}...")
+            ssh_client.connect(hostname=ilo_ip, username=ilo_username, password=ilo_password)
+            
+            # Execute the power cycle command to reboot the blade
+            stdin, stdout, stderr = ssh_client.exec_command('reset /system1')
+            print(f"Reboot command sent to iLO {ilo_ip}.")
+            
+            # Read any output or errors
+            stdout_output = stdout.read().decode()
+            stderr_output = stderr.read().decode()
+            
+            if stdout_output:
+                print(f"Output from iLO {ilo_ip}:\n{stdout_output}")
+            if stderr_output:
+                print(f"Error from iLO {ilo_ip}:\n{stderr_output}")
+
+        except paramiko.AuthenticationException:
+            print(f"Authentication failed for iLO {ilo_ip}. Please check your credentials.")
+        except paramiko.SSHException as e:
+            print(f"SSH connection error to iLO {ilo_ip}: {e}")
+        except Exception as e:
+            print(f"An error occurred with iLO {ilo_ip}: {e}")
+        finally:
+            # Close the SSH connection
+            ssh_client.close()
+
+    print("Reboot process completed for all iLO systems.")
+
+# Usage example
+file_path = 'ilo_ips.txt'  # Path to the file containing the list of iLO IPs
+ilo_username = 'your_ilo_username' # Replace with your iLO username
+ilo_password = 'your_ilo_password' # Replace with your iLO password
+
+reboot_ilo_systems(file_path, ilo_username, ilo_password)
