@@ -1,0 +1,110 @@
+import paramiko
+import time
+import openpyxl
+
+# Commands to change boot order, mount ISO, and revert settings
+change_to_pxe_cmd = 'set /system1/bootconfig1/bootorder1 PXE'
+revert_boot_order_cmd = 'set /system1/bootconfig1/bootorder1 HDD'
+mount_iso_cmd = 'vm cd insert iso-image-url'
+unmount_iso_cmd = 'vm cd eject'
+
+# Function to execute command over SSH using Paramiko
+def execute_ssh_command(host, user, password, command):
+    ssh = paramiko.SSHClient()
+    ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+    try:
+        ssh.connect(host, username=user, password=password)
+        stdin, stdout, stderr = ssh.exec_command(command)
+        output = stdout.read().decode()
+        error = stderr.read().decode()
+        print(f"Command executed: {command}")
+        print(f"Output: {output}")
+        if error:
+            print(f"Error: {error}")
+        ssh.close()
+    except Exception as e:
+        print(f"Failed to execute command {command} on {host}. Error: {str(e)}")
+
+# Change boot order to PXE
+def change_boot_order_to_pxe(host, user, password):
+    print(f"Changing boot order to PXE on {host}...")
+    execute_ssh_command(host, user, password, change_to_pxe_cmd)
+
+# Mount ISO for network installation
+def mount_iso(host, user, password):
+    print(f"Mounting ISO on {host}...")
+    execute_ssh_command(host, user, password, mount_iso_cmd)
+
+# Revert boot order back to HDD
+def revert_boot_order(host, user, password):
+    print(f"Reverting boot order to HDD on {host}...")
+    execute_ssh_command(host, user, password, revert_boot_order_cmd)
+
+# Unmount the ISO image
+def unmount_iso(host, user, password):
+    print(f"Unmounting ISO on {host}...")
+    execute_ssh_command(host, user, password, unmount_iso_cmd)
+
+# Post-install script to add SSH keys and Python scripts
+def post_install_script(host, user, password):
+    print(f"Executing post-install script on {host}...")
+    ssh_key = 'ssh-rsa AAAAB3NzaC1yc2EAAAABIwAAAQEA...'
+    commands = [
+        f'echo "{ssh_key}" >> /root/.ssh/authorized_keys',
+        'curl -O http://server/path/to/python-script.py',
+        'chmod +x python-script.py'
+    ]
+    for cmd in commands:
+        execute_ssh_command(host, user, password, cmd)
+
+# Function to deploy RHEL8 on a single host
+def deploy_rhel8(host, user, password):
+    # Step 1: Change boot order to PXE
+    change_boot_order_to_pxe(host, user, password)
+
+    # Step 2: Mount the ISO image
+    mount_iso(host, user, password)
+
+    # Step 3: Initiate PXE boot (restart server)
+    print(f"Restarting server {host} for PXE boot...")
+    execute_ssh_command(host, user, password, 'reset /system1')
+
+    # Wait for a few minutes to allow the system to boot and start the installation
+    time.sleep(300)  # 5 minutes
+
+    # Step 4: Revert boot order after installation begins
+    revert_boot_order(host, user, password)
+
+    # Step 5: Unmount the ISO image
+    unmount_iso(host, user, password)
+
+    # Step 6: Execute post-installation scripts
+    post_install_script(host, user, password)
+
+    print(f"Deployment completed successfully on {host}.")
+
+# Function to read inventory from Excel
+def read_inventory_from_excel(file_path):
+    inventory = []
+    workbook = openpyxl.load_workbook(file_path)
+    sheet = workbook.active
+    for row in sheet.iter_rows(min_row=2, values_only=True):  # Skipping the header row
+        ilo_host, ilo_user, ilo_pass = row
+        inventory.append((ilo_host, ilo_user, ilo_pass))
+    return inventory
+
+# Main function to deploy RHEL8 on multiple hosts
+def deploy_on_multiple_hosts(inventory_file):
+    # Read inventory from the Excel file
+    inventory = read_inventory_from_excel(inventory_file)
+    
+    # Deploy RHEL8 on each host in the inventory
+    for ilo_host, ilo_user, ilo_pass in inventory:
+        print(f"Starting deployment on {ilo_host}...")
+        deploy_rhel8(ilo_host, ilo_user, ilo_pass)
+        print(f"Deployment finished on {ilo_host}.\n")
+
+if __name__ == "__main__":
+    # Specify the path to the Excel file with inventory
+    inventory_file_path = 'inventory.xlsx'
+    deploy_on_multiple_hosts(inventory_file_path)
